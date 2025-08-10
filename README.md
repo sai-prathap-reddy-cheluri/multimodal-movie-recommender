@@ -1,26 +1,42 @@
 # 🎬 Multimodal Movie Recommender – Data Foundation
 
-A fast, modern data pipeline for building a next-gen movie recommender.
-It uses **async parallel fetching** to gather TMDb movies for a time range, then backfills **runtime, actors (full cast), and directors** via credits. This dataset is perfect for feature engineering, embeddings, or RAG-style retrieval for LLM-powered recommendations.
+A fast, modern data pipeline for building a next‑gen movie recommender.
+It uses async parallel fetching to gather TMDb movies for a time range, then backfills runtime, actors (full cast), and directors via credits. From there, we convert to typed Parquet, publish a small sample for reviewers, and keep the full dataset as a release asset. This repo is tuned for portfolio-readability and reproducibility.
+
+Attribution: This product uses the TMDb API but is not endorsed or certified by TMDb.
 
 ## ✨ Features
 - **Recursive windowing** to bypass TMDb’s 10k results/query cap
 - **Async credits fetch** (runtime, full cast, directors) with controlled concurrency
 - **Robust backfill** script: retries, exponential backoff, batch progress writes
 - Clean, reproducible **Gradio UI** to download datasets quickly
+- Typed Parquet + partitioning (fast loading, analytics‑friendly)
 
 ## 🗂️ Project Layout
 
 ```
-├─ data/ # CSVs you generate (git-ignored; keep small samples only)
+├─ data/                    # Raw CSVs you generate (git‑ignored; keep only small samples)
+│  └─ processed/
+│     ├─ movies.parquet               # full typed dataset (Release asset, not in Git)
+│     ├─ movies_parquet/              # partitioned by year/ (Release asset)
+│     ├─ movies_sample.parquet        # small sample kept in Git
+│     └─ splits/                      # optional time-based splits
+├─ reports/
+│  ├─ data_profile.json               # row counts, nulls, dtypes
+│  └─ checksums.txt                   # sha256 for integrity verification
 ├─ src/
-│ ├─ config.py # reads .env, defines DATA_DIR, etc.
-│ ├─ download_dataset.py # Gradio app (UI) to download datasets
-│ └─ utils/
-│ └─ download_utils.py # recursive discover + async credits enrichment
-├─ src/scripts/
-│ └─ backfill_credits.py # CLI backfill for rows missing actors & directors
-├─ .env # TMDB_API_KEY= Set your API key
+│  ├─ config.py                       # reads .env, defines DATA_DIR, etc.
+│  ├─ download_dataset.py             # Gradio app (UI) to download datasets
+│  ├─ tmdb_api_test.py                # quick API smoke test
+│  ├─ data/
+│  │  └─ prepare_ds_release.py        # intake → Parquet → sample → reports
+│  ├─ scripts/
+│  │  ├─ backfill_credits.py          # CLI backfill for blank actors/directors
+│  │  └─ make_splits.py               # create time‑based train/val/test
+│  └─ models/
+│     ├─ embed_movies.py              # text embeddings + ANN index (baseline)
+│     └─ embed_posters.py             # (optional) CLIP poster embeddings
+├─ .env                                # TMDB_API_KEY=...
 ├─ requirements.txt
 └─ README.md
 ```
@@ -106,6 +122,29 @@ What it does
 ```bash
 # tiny range to validate everything
 python -m src.scripts.backfill_credits --csv data/movies_2025-01-01_2025-01-31.csv --concurrency 8 --batch-size 300
+```
+
+## 🧱 Step 1 — Intake & Validation (convert CSV → Parquet)
+
+Turn the raw CSV into a typed, analytics‑ready Parquet dataset, plus a 10k sample and integrity reports. This step also builds absolute poster/backdrop URLs and standardizes list fields to JSON strings.
+
+```
+# requires: pandas, pyarrow
+python data/prepare_ds_release.py data/movies_2020-01-01_2025-08-08.csv
+```
+
+### Outputs:
+* data/processed/movies.parquet
+* data/processed/movies_parquet/ (partitioned by year)
+* data/processed/movies_sample.parquet
+* reports/data_profile.json, reports/checksums.txt
+
+### Viewing Parquet
+```
+import pandas as pd, duckdb
+print(pd.read_parquet('data/processed/movies.parquet').head())
+con = duckdb.connect()
+print(con.execute("SELECT year, COUNT(*) FROM 'data/processed/movies_parquet' GROUP BY year ORDER BY year").df())
 ```
 
 ## 🧭 Roadmap
