@@ -15,4 +15,5 @@ TMDB_API_KEY = os.getenv('TMDB_API_KEY')
 
 # Data folders
 DATA_DIR = os.path.join(PROJECT_ROOT, 'data')
+PROCESSED_DIR = os.path.join(DATA_DIR, 'processed')
 POSTER_DIR = os.path.join(DATA_DIR, 'posters')

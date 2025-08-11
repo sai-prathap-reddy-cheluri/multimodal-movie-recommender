@@ -24,19 +24,16 @@ Attribution: This product uses the TMDb API but is not endorsed or certified by 
 ├─ reports/
 │  ├─ data_profile.json               # row counts, nulls, dtypes
 │  └─ checksums.txt                   # sha256 for integrity verification
+├─ notebooks/
+│  └─ 01_eda_movies.ipynb             # visual EDA with short commentary
 ├─ src/
 │  ├─ config.py                       # reads .env, defines DATA_DIR, etc.
 │  ├─ download_dataset.py             # Gradio app (UI) to download datasets
 │  ├─ tmdb_api_test.py                # quick API smoke test
 │  ├─ data/
-│  │  └─ prepare_ds_release.py        # intake → Parquet → sample → reports
+│  │  └─ data_preparation.py        # intake → Parquet → sample → reports
 │  ├─ scripts/
-│  │  ├─ backfill_credits.py          # CLI backfill for blank actors/directors
-│  │  └─ make_splits.py               # create time‑based train/val/test
-│  └─ models/
-│     ├─ embed_movies.py              # text embeddings + ANN index (baseline)
-│     └─ embed_posters.py             # (optional) CLIP poster embeddings
-├─ .env                                # TMDB_API_KEY=...
+│  │  └─ backfill_credits.py          # CLI backfill for blank actors/directors
 ├─ requirements.txt
 └─ README.md
 ```
@@ -130,7 +127,7 @@ Turn the raw CSV into a typed, analytics‑ready Parquet dataset, plus a 10k sam
 
 ```
 # requires: pandas, pyarrow
-python data/prepare_ds_release.py data/movies_2020-01-01_2025-08-08.csv
+python src/data/prepare_ds_release.py data/movies_2020-01-01_2025-08-08.csv
 ```
 
 ### Outputs:
@@ -146,6 +143,28 @@ print(pd.read_parquet('data/processed/movies.parquet').head())
 con = duckdb.connect()
 print(con.execute("SELECT year, COUNT(*) FROM 'data/processed/movies_parquet' GROUP BY year ORDER BY year").df())
 ```
+
+## 📊 Step 2 — Exploratory Data Analysis (EDA)
+
+A compact, portfolio-ready EDA to understand coverage, data quality, and biases before modeling.
+### What you’ll see
+- Year trend 🗓️ (coverage & recency), Runtime ⏱️ (typical lengths & outliers)
+- Language & Genre mix 🌍
+- Popularity skew (votes vs. popularity) 📈
+- Missingness heatmap 🧼
+- A mini poster gallery for quick eyeballing 🎞️
+
+### Run it
+
+Open `notebooks/01_eda_movies.ipynb`.
+
+### ✅ What this EDA tells us
+- We have strong recent coverage → use time-based splits.
+- Runtimes have outliers → clip to p95 when featurizing.
+- Popularity is skewed → add semantic retrieval to reduce popularity bias.
+- Missingness is localized → impute/skip per-feature, don’t blanket-drop rows.
+
+## Next up: Step 3 — Baseline “next-gen” recommender (embeddings + light rerank).
 
 ## 🧭 Roadmap
 
