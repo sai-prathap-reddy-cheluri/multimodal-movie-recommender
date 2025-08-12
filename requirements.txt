@@ -8,3 +8,8 @@ matplotlib~=3.10.5
 numpy~=2.2.6
 pyarrow~=21.0.0
 ipython~=8.37.0
+torch~=2.7.1+cu128
+faiss-cpu
+sentence-transformers
+streamlit
+scikit-learn

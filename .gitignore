@@ -1,137 +1,58 @@
-# Byte-compiled / optimized / DLL files
+# OS cruft
+.DS_Store
+Thumbs.db
+
+# Python bytecode / caches
 __pycache__/
-*.py[codz]
-*$py.class
+*.py[cod]
+*.pyo
+.ipynb_checkpoints/
 
-# Distribution / packaging
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
-MANIFEST
+# Virtual envs
+.venv/
+venv/
+env/
+ENV/
+venv.bak/
+env.bak/
 
-# PyInstaller
-#  Usually these files are written by a python script from a template
-#  before PyInstaller builds the exe, so as to inject date/other infos into it.
-*.manifest
-*.spec
+# IDE settings
+.idea/
+.vscode/
 
-# Installer logs
-pip-log.txt
-pip-delete-this-directory.txt
-
-# Unit test / coverage reports
-htmlcov/
-.tox/
-.nox/
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.py.cover
-.hypothesis/
-.pytest_cache/
-cover/
-
-
-# PyBuilder
-.pybuilder/
-target/
-
-# Jupyter Notebook
-.ipynb_checkpoints
-
-# IPython
-profile_default/
-ipython_config.py
-
-# pyenv
-#   For a library or package, you might want to ignore these files since the code is
-#   intended to run in multiple environments; otherwise, check them in:
-.python-version
-
-# pipenv
-#   According to pypa/pipenv#598, it is recommended to include Pipfile.lock in version control.
-#   However, in case of collaboration, if having platform-specific dependencies or dependencies
-#   having no cross-platform support, pipenv may install dependencies that don't work, or not
-#   install all needed dependencies.
-Pipfile.lock
-
-# pdm
-#   Similar to Pipfile.lock, it is generally recommended to include pdm.lock in version control.
-#   pdm recommends including project-wide configuration in pdm.toml, but excluding .pdm-python.
-#   https://pdm-project.org/en/latest/usage/project/#working-with-version-control
-pdm.lock
-pdm.toml
-.pdm-python
-.pdm-build/
-
-# pixi
-#   Similar to Pipfile.lock, it is generally recommended to include pixi.lock in version control.
-#pixi.lock
-#   Pixi creates a virtual environment in the .pixi directory, just like venv module creates one
-#   in the .venv directory. It is recommended not to include this directory in version control.
-.pixi
-
-# PEP 582; used by e.g. github.com/David-OConnor/pyflow and github.com/pdm-project/pdm
-__pypackages__/
-
-# Celery stuff
-celerybeat-schedule
-celerybeat.pid
-
-# SageMath parsed files
-*.sage.py
-
-# Environments
+# Secrets & config
 .env
 .envrc
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+# Streamlit secrets (keep config out of VCS)
+.streamlit/secrets.toml
 
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
+# Hugging Face cache (project-local)
+.hf_cache/
 
-# pytype static type analyzer
-.pytype/
+# Local model folders (allow README)
+models/
+!models/README.md
 
-# Cython debug symbols
-cython_debug/
+# ----------------------------
+# Data & artifacts (large files)
+# ----------------------------
+# Raw data
+data/raw/
 
-# PyCharm
-#  JetBrains specific template is maintained in a separate JetBrains.gitignore that can
-#  be found at https://github.com/github/gitignore/blob/main/Global/JetBrains.gitignore
-#  and can be added to the global gitignore or merged into this file.  For a more nuclear
-#  option (not recommended) you can uncomment the following to ignore the entire idea folder.
-.idea/
-
-# PyPI configuration file
-.pypirc
-
-# raw + big processed
+# CSV/TSV anywhere under data/
 data/**/*.csv
-data/processed/movies.parquet
-data/processed/movies_parquet/**
-# keep the sample data
+data/**/*.tsv
+
+# Processed artifacts
+data/processed/artifacts/**
+
+# All Parquet in processed, except the small sample
+data/processed/*.parquet
 !data/processed/movies_sample.parquet
+
+# If you sometimes write partitioned Parquet dirs, ignore them too
+data/processed/*_parquet/**
+
+# Logs / temp
+logs/
+*.log

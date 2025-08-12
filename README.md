@@ -164,7 +164,86 @@ Open `notebooks/01_eda_movies.ipynb`.
 - Popularity is skewed → add semantic retrieval to reduce popularity bias.
 - Missingness is localized → impute/skip per-feature, don’t blanket-drop rows.
 
-## Next up: Step 3 — Baseline “next-gen” recommender (embeddings + light rerank).
+## Step 3 — Baseline “next-gen” recommender (embeddings + light rerank)
+
+Build a fast, modern baseline that looks great in a portfolio: dense retrieval over rich movie text, then a tiny reranker for relevance + optional diversity.
+
+### What you’ll build
+- **Text retriever (dense):** create a rich doc per movie (title · overview · top cast/crew · genres · year), embed with a compact model, and index with FAISS.
+- **Light reranker:** sort the top candidates with either a **blend** (retrieval score + recency + popularity) or a **small cross-encoder**.
+- **Diversity (optional):** **MMR** (Maximal Marginal Relevance) to avoid near-duplicates.
+- **Tiny eval:** quick proxy metrics to claim improvements (genre overlap@k, year gap, language match).
+- **Mini demo:** Streamlit one-box search with posters.
+
+> **Trend note (verified best practice):** Hybrid **dense+sparse** retrieval plus a **light reranker** is the current default pattern for modern recommenders/search. Add MMR for diversity and you’ve got a strong baseline.
+
+---
+
+### Artifacts produced
+- `data/processed/artifacts/text.index` — FAISS index (cosine/IP).
+- `data/processed/artifacts/text_idmap.parquet` — rowid ↔ movie_id map.
+- `data/processed/artifacts/search_payload.parquet` — lean fields for display/rerank.
+- `data/processed/artifacts/eval_proxy_[method].csv|json` — quick offline metrics.
+
+---
+
+### Run it (Step 3A–3D)
+
+> **Windows 11 + CUDA (verified):** GPU is used for embeddings/rerank; keep FAISS on CPU.
+
+**3A — Build the text index**
+```bash
+python -m src.recsys.build_text_index
+```
+
+**3B — Search + rerank
+```bash
+# Blend (default): retrieval + recency + popularity
+python -m src.recsys.search_and_rerank "smart heist thriller set in Europe" --k 20 --method blend
+
+# Retrieval only
+python -m src.recsys.search_and_rerank "lonely space survival drama" --k 20 --method retrieval
+
+# Cross-encoder rerank (small, runs on GPU)
+python -m src.recsys.search_and_rerank "neo-noir crime with witty dialogue" --k 20 --method ce
+
+# MMR diversity (more variety; λ≈0.2–0.3 is a good default)
+python -m src.recsys.search_and_rerank "cozy holiday romcom" --k 20 --method mmr --mmr_lambda 0.3
+```
+
+**3C — Tiny proxy eval
+```bash
+python -m src.recsys.eval_proxy --k 10 --sample_n 200 --method blend
+```
+
+**3D — Streamlit demo
+```bash
+streamlit run src/app/demo.py
+```
+### Configuration
+
+- Models (env-overridable):
+    * EMBED_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
+    * CROSS_ENCODER_NAME=cross-encoder/ms-marco-MiniLM-L-6-v2
+
+- Performance toggles:
+    * ST_FP16=1 (use half precision on CUDA-capable GPUs)
+    * HF_HOME=.hf_cache (shorter Windows paths)
+
+- Hugging Face auth (avoid 429s):
+    * .env: HUGGING_FACE_HUB_TOKEN=hf_xxx
+    * (Optional) pre-download model and set EMBED_MODEL_NAME to the local folder
+
+### How to search (good queries)
+
+Use natural language: [genre] + [vibe] + [hook/theme] + [setting/locale] + [constraints]
+- “slow-burn sci-fi about isolation in space”
+- “Indian Malayalam investigative thriller after 2020”
+- “like ‘Drishyam’, tight family crime with twists”
+- “anime coming-of-age with music and friendship”
+
+If results feel same-y → use --method mmr --mmr_lambda 0.25.
+If results feel too niche → raise min vote_count in the demo or add broader vibe words.
 
 ## 🧭 Roadmap
 
