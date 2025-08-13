@@ -1,52 +1,86 @@
-# 🎬 Multimodal Movie Recommender – Data Foundation
+# 🎬 Multimodal Movie Recommender — Data → Baseline → Hybrid
 
-A fast, modern data pipeline for building a next‑gen movie recommender.
-It uses async parallel fetching to gather TMDb movies for a time range, then backfills runtime, actors (full cast), and directors via credits. From there, we convert to typed Parquet, publish a small sample for reviewers, and keep the full dataset as a release asset. This repo is tuned for portfolio-readability and reproducibility.
+A fast, modern pipeline for building a **next‑gen movie recommender**.
+Start with a solid **data foundation**, then ship a **dense retriever + light reranker** baseline, and finally upgrade to **hybrid retrieval (dense + BM25) with language‑aware ranking**.
 
-Attribution: This product uses the TMDb API but is not endorsed or certified by TMDb.
+> **Attribution:** This product uses the TMDb API but is not endorsed or certified by TMDb.
+
+---
 
 ## ✨ Features
+
 - **Recursive windowing** to bypass TMDb’s 10k results/query cap
-- **Async credits fetch** (runtime, full cast, directors) with controlled concurrency
-- **Robust backfill** script: retries, exponential backoff, batch progress writes
-- Clean, reproducible **Gradio UI** to download datasets quickly
-- Typed Parquet + partitioning (fast loading, analytics‑friendly)
+- **Async credits backfill** (runtime, full cast, directors) with controlled concurrency
+- **Typed Parquet** + optional partitioning (fast loading, analytics‑friendly)
+- **Baseline recommender**: embeddings + FAISS + light rerank (blend / CE / MMR)
+- **Hybrid retrieval**: dense (embeddings) + sparse (BM25) fused via **RRF**
+- **Language‑aware ranking**: auto‑detect language intent in query; **soft boost** or **hard filter**
+- **Streamlit demo** (GPU‑aware on Windows 11) and **tiny offline eval**
+
+---
 
 ## 🗂️ Project Layout
 
 ```
-├─ data/                    # Raw CSVs you generate (git‑ignored; keep only small samples)
+├─ data/
 │  └─ processed/
-│     ├─ movies.parquet               # full typed dataset (Release asset, not in Git)
-│     ├─ movies_parquet/              # partitioned by year/ (Release asset)
-│     ├─ movies_sample.parquet        # small sample kept in Git
-│     └─ splits/                      # optional time-based splits
+│     ├─ movies.parquet                # full typed dataset
+│     ├─ movies_parquet/               # partitioned by year
+│     ├─ movies_sample.parquet         # small sample kept in Git
+│     └─ artifacts/
+│        ├─ text.index                 # FAISS index (cosine/IP)
+│        ├─ text_idmap.parquet         # rowid ↔ movie_id
+│        └─ search_payload.parquet     # lean fields for search/rerank
 ├─ reports/
-│  ├─ data_profile.json               # row counts, nulls, dtypes
-│  └─ checksums.txt                   # sha256 for integrity verification
+│  ├─ data_profile.json
+│  └─ checksums.txt
 ├─ notebooks/
-│  └─ 01_eda_movies.ipynb             # visual EDA with short commentary
+│  └─ 01_eda_movies.ipynb              # portfolio‑style EDA
 ├─ src/
-│  ├─ config.py                       # reads .env, defines DATA_DIR, etc.
-│  ├─ download_dataset.py             # Gradio app (UI) to download datasets
-│  ├─ tmdb_api_test.py                # quick API smoke test
+│  ├─ config.py                        # reads .env; paths; device detection
+│  ├─ download_dataset.py              # Gradio UI to fetch CSVs
+│  ├─ tmdb_api_test.py                 # quick API smoke test
 │  ├─ data/
-│  │  └─ data_preparation.py        # intake → Parquet → sample → reports
-│  ├─ scripts/
-│  │  └─ backfill_credits.py          # CLI backfill for blank actors/directors
+│  │  └─ data_preparation.py           # CSV → Parquet → sample → reports
+│  ├─ recsys/
+│  │  ├─ build_text_index.py           # Step 3A (doc builder + embeddings + FAISS)
+│  │  ├─ search_and_rerank.py          # Step 3B + Step 4 (retrieval, CE, MMR, HYBRID)
+│  │  ├─ eval_proxy.py                 # Step 3C proxy metrics
+│  │  ├─ hybrid_sparse.py              # BM25 retriever
+│  │  └─ hybrid_fusion.py              # RRF combiner
+│  └─ app/
+│     └─ demo.py                       # Streamlit demo
 ├─ requirements.txt
 └─ README.md
 ```
 
-## 🔑 Prerequisites
-- Python 3.10+
-- A free TMDb API key: https://www.themoviedb.org/settings/api
+---
 
-Prerequisite: .env in the project root with:
+## 🔑 Prerequisites
+
+- Python **3.10+**
+- A free TMDb API key → https://www.themoviedb.org/settings/api
+- (Optional but recommended) NVIDIA GPU on **Windows 11** with CUDA for faster encoders
+
+Create a **`.env`** in the project root:
+
 ```ini
 TMDB_API_KEY=YOUR_TMDB_KEY_HERE
+
+# Hugging Face (avoid 429s)
+HUGGING_FACE_HUB_TOKEN=hf_xxx
+HF_HOME=.hf_cache
+
+# Models / perf (override if desired)
+EMBED_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
+CROSS_ENCODER_NAME=cross-encoder/ms-marco-MiniLM-L-6-v2
+ST_FP16=1
 ```
+
+---
+
 ## 🧰 Setup
+
 ```bash
 # create & activate venv (Windows PowerShell)
 python -m venv venv
@@ -56,203 +90,193 @@ python -m venv venv
 python -m venv venv
 source venv/bin/activate
 
-# install deps
+# install CUDA PyTorch (Windows with CUDA 12.1; adjust if needed)
+pip install --upgrade --index-url https://download.pytorch.org/whl/cu121 torch torchvision torchaudio
+
+# install project deps
 pip install -r requirements.txt
 ```
 
-## ✅ Verify your TMDb API setup
+### ✅ Verify your TMDb API setup
 
-You can quickly check that your API key and network access are working by running the test script **`src/tmdb_api_test.py`**. It will call TMDb and print the top 5 popular movies.
-
-> Run these commands **from the project root** (where your `.env` lives).
-
-**Windows / PyCharm terminal**
-```powershell
-python -m src.tmdb_api_test
-# or
-python src\tmdb_api_test.py
-```
-
-```bash
-python -m src.tmdb_api_test
-# or
-python src/tmdb_api_test.py
-```
-
-## 🚀 Run the Downloader (Gradio UI)
-
-Launch the UI and download a dataset for any date range; it will also enrich with runtime, full cast, and directors.
 ```bash
 # from repo root
+python -m src.tmdb_api_test
+```
+
+---
+
+## 🚀 Download a Dataset (Gradio UI)
+
+```bash
 python -m src.download_dataset
 ```
-* Choose a preset date range or set custom dates.
-* Toggle Include adult (18+) as desired.
-* Set Concurrency (parallel credit requests). Start with 12–20.
-* Output CSV: data/movies_YYYY-MM-DD_YYYY-MM-DD.csv.
+- Choose a date range (uses recursive windowing under-the-hood)
+- Toggle **Include adult (18+)** if relevant
+- **Concurrency** 12–20 is a good start
+- Outputs CSV under `data/`
 
-## 🔁 Backfill Missing Credits (CLI)
-
-While fetching the actors and director if API times out and the actors and director list is blank,  then can backfill rows where both actors and directors are empty, run:
+### 🔁 Backfill Missing Credits (CLI)
 
 ```bash
-# Windows (PyCharm terminal uses the project interpreter)
-python -m src.scripts.backfill_credits --csv data/movies_2020-01-01_2025-08-08.csv --concurrency 12 --batch-size 800
-
-# macOS / Linux
-python -m src.scripts.backfill_credits --csv data/movies_2020-01-01_2025-08-08.csv --concurrency 12 --batch-size 800
+python -m src.scripts.backfill_credits --csv data/movies_YYYY-MM-DD_YYYY-MM-DD.csv --concurrency 12 --batch-size 800
 ```
+What it does:
+- Reads CSV
+- Finds rows where **both** actors & directors are blank
+- Fetches credits with retries + exponential backoff + jitter
+- Writes progress back to the same CSV each batch (safe stop/resume)
 
-What it does
-* Reads your CSV.
-* Finds rows where both actors and directors are blank.
-* Fetches credits with retries + exponential backoff + jitter.
-* Writes progress back to the same CSV after each batch so you can safely stop/resume.
+---
 
-## ⚙️ Concurrency & Batch Size
+## 🧱 Step 1 — Intake & Validation (CSV → Parquet)
 
-* Concurrency (credits): start 12–16, cap around 20–24.
-* Batch size: 500–1000 IDs per batch is a sweet spot.
-* If you see 429 Too Many Requests or timeouts, lower concurrency and/or batch size.
+Convert raw CSV → **typed Parquet**, plus a small sample and integrity reports.
 
-### 🧪 Quick Smoke Test
 ```bash
-# tiny range to validate everything
-python -m src.scripts.backfill_credits --csv data/movies_2025-01-01_2025-01-31.csv --concurrency 8 --batch-size 300
-```
-
-## 🧱 Step 1 — Intake & Validation (convert CSV → Parquet)
-
-Turn the raw CSV into a typed, analytics‑ready Parquet dataset, plus a 10k sample and integrity reports. This step also builds absolute poster/backdrop URLs and standardizes list fields to JSON strings.
-
-```
-# requires: pandas, pyarrow
 python src/data/prepare_ds_release.py data/movies_2020-01-01_2025-08-08.csv
 ```
 
-### Outputs:
-* data/processed/movies.parquet
-* data/processed/movies_parquet/ (partitioned by year)
-* data/processed/movies_sample.parquet
-* reports/data_profile.json, reports/checksums.txt
+**Outputs:**
+- `data/processed/movies.parquet`
+- `data/processed/movies_parquet/` (partitioned)
+- `data/processed/movies_sample.parquet`
+- `reports/data_profile.json`, `reports/checksums.txt`
 
-### Viewing Parquet
-```
-import pandas as pd, duckdb
-print(pd.read_parquet('data/processed/movies.parquet').head())
-con = duckdb.connect()
-print(con.execute("SELECT year, COUNT(*) FROM 'data/processed/movies_parquet' GROUP BY year ORDER BY year").df())
-```
+---
 
 ## 📊 Step 2 — Exploratory Data Analysis (EDA)
 
-A compact, portfolio-ready EDA to understand coverage, data quality, and biases before modeling.
-### What you’ll see
-- Year trend 🗓️ (coverage & recency), Runtime ⏱️ (typical lengths & outliers)
+Open `notebooks/01_eda_movies.ipynb` for a compact EDA:
+- Year trend 🗓️, Runtime ⏱️
 - Language & Genre mix 🌍
-- Popularity skew (votes vs. popularity) 📈
+- Popularity skew 📈
 - Missingness heatmap 🧼
-- A mini poster gallery for quick eyeballing 🎞️
+- Poster gallery 🎞️
 
-### Run it
-
-Open `notebooks/01_eda_movies.ipynb`.
-
-### ✅ What this EDA tells us
-- We have strong recent coverage → use time-based splits.
-- Runtimes have outliers → clip to p95 when featurizing.
-- Popularity is skewed → add semantic retrieval to reduce popularity bias.
-- Missingness is localized → impute/skip per-feature, don’t blanket-drop rows.
-
-## Step 3 — Baseline “next-gen” recommender (embeddings + light rerank)
-
-Build a fast, modern baseline that looks great in a portfolio: dense retrieval over rich movie text, then a tiny reranker for relevance + optional diversity.
-
-### What you’ll build
-- **Text retriever (dense):** create a rich doc per movie (title · overview · top cast/crew · genres · year), embed with a compact model, and index with FAISS.
-- **Light reranker:** sort the top candidates with either a **blend** (retrieval score + recency + popularity) or a **small cross-encoder**.
-- **Diversity (optional):** **MMR** (Maximal Marginal Relevance) to avoid near-duplicates.
-- **Tiny eval:** quick proxy metrics to claim improvements (genre overlap@k, year gap, language match).
-- **Mini demo:** Streamlit one-box search with posters.
-
-> **Trend note (verified best practice):** Hybrid **dense+sparse** retrieval plus a **light reranker** is the current default pattern for modern recommenders/search. Add MMR for diversity and you’ve got a strong baseline.
+**What it tells us:**
+- Strong recent coverage → time‑based splits
+- Popularity is skewed → add semantic retrieval to reduce bias
+- Missingness is localized → impute/skip per‑feature
 
 ---
 
-### Artifacts produced
-- `data/processed/artifacts/text.index` — FAISS index (cosine/IP).
-- `data/processed/artifacts/text_idmap.parquet` — rowid ↔ movie_id map.
-- `data/processed/artifacts/search_payload.parquet` — lean fields for display/rerank.
-- `data/processed/artifacts/eval_proxy_[method].csv|json` — quick offline metrics.
+## ⚙️ Step 3 — Baseline “next‑gen” recommender (embeddings + light rerank)
 
----
+Build a fast, modern baseline: **dense retrieval** over **rich docs** + tiny reranker.
 
-### Run it (Step 3A–3D)
-
-> **Windows 11 + CUDA (verified):** GPU is used for embeddings/rerank; keep FAISS on CPU.
-
-**3A — Build the text index**
+### 3A — Build the text index
 ```bash
 python -m src.recsys.build_text_index
 ```
+Creates:
+- `data/processed/artifacts/text.index` (FAISS, cosine/IP)
+- `data/processed/artifacts/text_idmap.parquet`
+- `data/processed/artifacts/search_payload.parquet` (includes the **doc**: title · overview · top cast/crew · genres · **language** · year)
 
-**3B — Search + rerank
+### 3B — Search + rerank (CLI)
 ```bash
-# Blend (default): retrieval + recency + popularity
+# Blend (retrieval + recency + popularity)
 python -m src.recsys.search_and_rerank "smart heist thriller set in Europe" --k 20 --method blend
 
-# Retrieval only
+# Retrieval only (no rerank)
 python -m src.recsys.search_and_rerank "lonely space survival drama" --k 20 --method retrieval
 
-# Cross-encoder rerank (small, runs on GPU)
-python -m src.recsys.search_and_rerank "neo-noir crime with witty dialogue" --k 20 --method ce
+# Cross‑encoder rerank (small; uses GPU if available)
+python -m src.recsys.search_and_rerank "neo‑noir crime with witty dialogue" --k 20 --method ce
 
-# MMR diversity (more variety; λ≈0.2–0.3 is a good default)
+# MMR diversity (good default λ≈0.2–0.3)
 python -m src.recsys.search_and_rerank "cozy holiday romcom" --k 20 --method mmr --mmr_lambda 0.3
 ```
 
-**3C — Tiny proxy eval
+### 3C — Tiny proxy eval
 ```bash
 python -m src.recsys.eval_proxy --k 10 --sample_n 200 --method blend
 ```
+Outputs CSV + summary JSON in `artifacts/`.
 
-**3D — Streamlit demo
+### 3D — Streamlit demo
 ```bash
 streamlit run src/app/demo.py
 ```
-### Configuration
+Use the sidebar to:
+- Enter a taste query
+- Choose **method** (blend / retrieval / ce / mmr / **hybrid**)
+- Set **Top‑K**, **MMR λ** (for MMR), and **Min vote_count**
 
-- Models (env-overridable):
-    * EMBED_MODEL_NAME=sentence-transformers/all-MiniLM-L6-v2
-    * CROSS_ENCODER_NAME=cross-encoder/ms-marco-MiniLM-L-6-v2
+---
 
-- Performance toggles:
-    * ST_FP16=1 (use half precision on CUDA-capable GPUs)
-    * HF_HOME=.hf_cache (shorter Windows paths)
+## 🧪 Step 4 — Hybrid retrieval (dense + BM25) with language‑aware ranking
 
-- Hugging Face auth (avoid 429s):
-    * .env: HUGGING_FACE_HUB_TOKEN=hf_xxx
-    * (Optional) pre-download model and set EMBED_MODEL_NAME to the local folder
+**Why:** exact names/franchises/misspellings + strong semantic recall is the 2025 default.
+**How:** fuse **dense (FAISS)** and **sparse (BM25)** with **RRF**; detect language intent and **boost** or **hard‑keep** that language.
 
-### How to search (good queries)
+### Use it
+```bash
+# RRF fusion + soft language boost (default)
+python -m src.recsys.search_and_rerank "malayalam thriller" --method hybrid --k 20
 
-Use natural language: [genre] + [vibe] + [hook/theme] + [setting/locale] + [constraints]
-- “slow-burn sci-fi about isolation in space”
+# Hard language preference (keep Malayalam first, then top‑up)
+python -m src.recsys.search_and_rerank "malayalam thriller" --method hybrid --k 20 --lang_policy auto-hard
+```
+
+**Knobs:**
+- `--hybrid_dense_k / --hybrid_sparse_k` – candidate pool sizes (default 500/500)
+- `--rrf_k` – RRF constant (typical 50–100; default 60)
+- `--w_dense / --w_sparse` – source weights (default 1.0/1.0)
+- `--lang_policy` – `off | auto-soft | auto-hard`
+
+**What’s under the hood:**
+- `hybrid_sparse.py` builds an in‑memory **BM25** over `doc`
+- `search_and_rerank.py` returns **rowid** from FAISS; hybrid uses RRF on rowids
+- Language intent is **data‑driven** (codes + spoken names discovered from payload)
+- Query is augmented with “**Language: <Name>**” so both dense & BM25 see it
+- Policy: **soft boost** (multiply scores) or **hard keep** (filter/top‑up)
+
+---
+
+## 🔎 How to search (good queries)
+
+**Recipe:** `[genre] + [vibe] + [hook/theme] + [setting/locale] + [constraints]`
+
+Examples (paste as‑is):
+- “slow‑burn sci‑fi about isolation in space”
 - “Indian Malayalam investigative thriller after 2020”
 - “like ‘Drishyam’, tight family crime with twists”
-- “anime coming-of-age with music and friendship”
+- “anime coming‑of‑age with music and friendship”
+- “Tamil neo‑noir crime in Chennai”
+- “French heist comedy 2000s”
 
-If results feel same-y → use --method mmr --mmr_lambda 0.25.
-If results feel too niche → raise min vote_count in the demo or add broader vibe words.
+**Tips:**
+- Prefer **natural language** over boolean syntax
+- For variety: `--method mmr --mmr_lambda 0.25`
+- For exact names/franchises: `--method hybrid`
+- If results feel too niche: raise **Min vote_count** in the demo
+
+---
+
+## 🧩 Troubleshooting
+
+- **HF 429 / auth** → add `HUGGING_FACE_HUB_TOKEN` to `.env` or pre‑download models; set `HF_HOME=.hf_cache`
+- **FAISS error: `n, d = x.shape`** → ensure query vector is **(1, d) float32** (already handled in code)
+- **pd.NA slicing** → code uses NA‑safe helpers; rebuild if you changed doc logic
+- **Streamlit import error** → run from repo root or use the path bootstrap in `demo.py`
+- **Few results with MMR + min votes** → set min votes to 0 or use the “top‑up” filter; increase MMR pool
+
+---
 
 ## 🧭 Roadmap
 
-* Poster caching on-demand
-* Embeddings & vector store for RAG-augmented recommendations
-* Multimodal ranking with poster/text features
+- Poster caching on demand
+- **Hybrid by default** in demo, with entity‑aware boosts (actors/directors)
+- Explanations (“Because you liked… / shares actor Y / genre Z”)
+- Personalization (seed titles → user vector)
+- FastAPI + Docker for deployment
+- Multimodal ranking (CLIP poster embeddings + text)
+
+---
 
 ## 📜 License
 
 MIT
 
----

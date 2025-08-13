@@ -68,7 +68,7 @@ def cli():
     ap = argparse.ArgumentParser()
     ap.add_argument("--k", type=int, default=10)
     ap.add_argument("--sample_n", type=int, default=200)
-    ap.add_argument("--method", type=str, default="blend", choices=["blend","retrieval","ce","mmr"])
+    ap.add_argument("--method", type=str, default="blend", choices=["blend","retrieval","ce","mmr","hybrid"])
     args = ap.parse_args()
 
     dfm = run_eval(k=args.k, sample_n=args.sample_n, method=args.method)

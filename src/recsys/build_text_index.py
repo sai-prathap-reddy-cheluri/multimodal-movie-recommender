@@ -8,8 +8,13 @@ from src.config import (
     MOVIES_PARQUET, SEARCH_PAYLOAD, TEXT_INDEX, TEXT_IDMAP,
     EMBED_MODEL_NAME, DEVICE, USE_FP16
 )
+try:
+    import pycountry
+except Exception:
+    pycountry = None
 
-def s(x) -> str:
+
+def safe_str(x) -> str:
     """Safe scalar → string: handles pd.NA / NaN / None."""
     try:
         return "" if pd.isna(x) else str(x)
@@ -31,14 +36,41 @@ def jlist(x):
     except Exception:
         return []
 
+def lang_name_from_code(code: str) -> str:
+    code = (code or "").strip().lower()
+    if not code:
+        return ""
+    if pycountry:
+        try:
+            rec = pycountry.languages.get(alpha_2=code)
+            if rec and rec.name:
+                return rec.name
+        except Exception:
+            pass
+    return code.upper()
+
+def pick_lang_name(row):
+    # Prefer spoken_languages_json -> english_name
+    sl = jlist(row.get("spoken_languages")) or jlist(row.get("spoken_languages_json"))
+    if sl:
+        if isinstance(sl[0], dict):
+            name = sl[0].get("english_name") or sl[0].get("name")
+            if name:
+                return name
+        if isinstance(sl[0], str):
+            return sl[0]
+    return lang_name_from_code(safe_str(row.get("original_language")))
+
 def to_doc(row):
     # Accept both pre-parsed and *_json columns
     genres = jlist(row.get("genres")) or [str(g) for g in jlist(row.get("genre_ids_json", "[]"))]
     actors = jlist(row.get("actors")) or jlist(row.get("actors_json", "[]"))
     directors = jlist(row.get("directors")) or jlist(row.get("directors_json", "[]"))
 
-    title = s(row.get("title"))
-    overview = s(row.get("overview"))
+    title = safe_str(row.get("title"))
+    overview = safe_str(row.get("overview"))
+    lang_name = pick_lang_name(row)
+    countries = jlist(row.get("production_countries")) or jlist(row.get("production_countries_json"))
 
     year = row.get("year")
     year_str = f"Year: {int(year)}" if pd.notna(year) else ""
@@ -49,6 +81,8 @@ def to_doc(row):
         f"Genres: {', '.join(genres)}" if genres else "",
         f"Cast: {', '.join(actors[:5])}" if actors else "",
         f"Directors: {', '.join(directors[:3])}" if directors else "",
+        f"Language: {lang_name}" if lang_name else "",
+        f"Countries: {', '.join([safe_str(c) for c in countries if safe_str(c)])}" if countries else "",
         year_str
     ]
     # Filter empties and join with ". "
