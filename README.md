@@ -15,6 +15,7 @@ Start with a solid **data foundation**, then ship a **dense retriever + light re
 - **Baseline recommender**: embeddings + FAISS + light rerank (blend / CE / MMR)
 - **Hybrid retrieval**: dense (embeddings) + sparse (BM25) fused via **RRF**
 - **Language‑aware ranking**: auto‑detect language intent in query; **soft boost** or **hard filter**
+- **Explanations**: short reasons (language/genre/people/year) per result
 - **Streamlit demo** (GPU‑aware on Windows 11) and **tiny offline eval**
 
 ---
@@ -42,12 +43,18 @@ Start with a solid **data foundation**, then ship a **dense retriever + light re
 │  ├─ tmdb_api_test.py                 # quick API smoke test
 │  ├─ data/
 │  │  └─ data_preparation.py           # CSV → Parquet → sample → reports
+│  ├─ scripts/
+│  │  └─ backfill_credits.py           # Backfill credits
+│  ├─ utils/
+│  │  ├─ download_utils.py
+│  │  └─ nlp_utils.py
 │  ├─ recsys/
 │  │  ├─ build_text_index.py           # Step 3A (doc builder + embeddings + FAISS)
 │  │  ├─ search_and_rerank.py          # Step 3B + Step 4 (retrieval, CE, MMR, HYBRID)
 │  │  ├─ eval_proxy.py                 # Step 3C proxy metrics
 │  │  ├─ hybrid_sparse.py              # BM25 retriever
-│  │  └─ hybrid_fusion.py              # RRF combiner
+│  │  ├─  hybrid_fusion.py             # RRF combiner
+│  │  └─ explanations.py               # Reasons
 │  └─ app/
 │     └─ demo.py                       # Streamlit demo
 ├─ requirements.txt
@@ -235,25 +242,38 @@ python -m src.recsys.search_and_rerank "malayalam thriller" --method hybrid --k 
 
 ---
 
-## 🔎 How to search (good queries)
+## 💡 Step 5 — Explanations (short reasons)
 
-**Recipe:** `[genre] + [vibe] + [hook/theme] + [setting/locale] + [constraints]`
+Add human-readable reasons to each result: **language match**, **genre overlap**, **title keyword**, **year proximity**, and **cast/dir** fallbacks.
 
-Examples (paste as‑is):
-- “slow‑burn sci‑fi about isolation in space”
-- “Indian Malayalam investigative thriller after 2020”
-- “like ‘Drishyam’, tight family crime with twists”
-- “anime coming‑of‑age with music and friendship”
-- “Tamil neo‑noir crime in Chennai”
-- “French heist comedy 2000s”
+### Demo (UI)
+- Reasons appear under each card (e.g., `Matches language: Malayalam • Shares genres: Thriller`)
+- Falls back to overview snippet if no reason is available
 
-**Tips:**
-- Prefer **natural language** over boolean syntax
-- For variety: `--method mmr --mmr_lambda 0.25`
-- For exact names/franchises: `--method hybrid`
-- If results feel too niche: raise **Min vote_count** in the demo
+### CLI (optional)
+Add reasons column with:
+```bash
+python -m src.recsys.search_and_rerank "malayalam thriller" --method hybrid --k 10
+# (prints title/year/score columns; reasons available if enabled in cli() output)
+```
 
 ---
+
+## 🔎 Query tips
+
+**Recipe:** `[genre] + [vibe] + [hook/theme] + [setting/locale] + [constraints]`
+Examples:
+- `slow-burn sci-fi about isolation in space`
+- `Indian Malayalam investigative thriller after 2020`
+- `like "Drishyam", tight family crime with twists`
+- `Tamil neo-noir crime in Chennai`
+- `French heist comedy 2020s`
+
+If results feel same-y → `--method mmr --mmr_lambda 0.25`
+If too niche → raise **Min vote_count** in the demo; add broader vibe words.
+
+---
+
 
 ## 🧩 Troubleshooting
 
@@ -267,12 +287,10 @@ Examples (paste as‑is):
 
 ## 🧭 Roadmap
 
-- Poster caching on demand
-- **Hybrid by default** in demo, with entity‑aware boosts (actors/directors)
-- Explanations (“Because you liked… / shares actor Y / genre Z”)
-- Personalization (seed titles → user vector)
-- FastAPI + Docker for deployment
-- Multimodal ranking (CLIP poster embeddings + text)
+- Explanations: add explicit actor/director/genre/entity boosts in scoring
+- Personalization: user vectors from liked items; “more like these”
+- API (FastAPI) + Docker; CI workflow on sample parquet
+- Multimodal fusion (CLIP poster embeddings + text)
 
 ---
 

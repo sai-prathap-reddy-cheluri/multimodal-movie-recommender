@@ -3,8 +3,7 @@ import argparse
 from dataclasses import dataclass, asdict
 from functools import lru_cache
 from pathlib import Path
-from typing import Optional, Tuple, Dict, Any, List, Union, Sequence
-import json
+from typing import Optional, Tuple, Any, List, Union, Sequence
 import numpy as np
 import pandas as pd
 import faiss
@@ -17,20 +16,7 @@ from src.config import (
 )
 from src.recsys.hybrid_fusion import rrf_fuse
 from src.recsys.hybrid_sparse import SparseBM25
-
-def jlist(x):
-    if isinstance(x, list):
-        return x
-    if x is None:
-        return []
-    try:
-        if isinstance(x, str):
-            y = json.loads(x)
-        else:
-            y = x
-        return y if isinstance(y, list) else []
-    except Exception:
-        return []
+from src.utils.nlp_utils import jlist
 
 def build_lang_aliases(df: pd.DataFrame) -> dict[str, tuple[str,str]]:
     """

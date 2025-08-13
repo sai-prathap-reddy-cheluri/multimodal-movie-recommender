@@ -1,47 +1,23 @@
-import sys, traceback
+import sys
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-import json, ast
-from typing import List, Sequence, Union
+from typing import  Sequence, Union
 import pandas as pd
 import streamlit as st
 from src.recsys.search_and_rerank import retrieve
+from src.utils.nlp_utils import jlist, safe_str
 
-# Helpers
-def s(x) -> str:
-    try:
-        return "" if pd.isna(x) else str(x)
-    except Exception:
-        return "" if x is None else str(x)
-
-def jlist(x) -> List[str]:
-    try:
-        if x is None or (hasattr(pd, "isna") and pd.isna(x)):
-            return []
-    except Exception:
-        pass
-    if isinstance(x, list):
-        return x
-    if isinstance(x, str):
-        x = x.strip()
-        if not x:
-            return []
-        try:
-            y = json.loads(x)
-            return y if isinstance(y, list) else []
-        except Exception:
-            try:
-                y = ast.literal_eval(x)
-                return y if isinstance(y, list) else []
-            except Exception:
-                return []
-    return []
+try:
+    from src.recsys.explanations import make_reasons_for_frame
+    HAS_EXPL = True
+except Exception:
+    HAS_EXPL = False
 
 def truncate(text: str, n: int = 120) -> str:
-    text = s(text)
+    text = safe_str(text)
     return text[:n] + ("…" if len(text) > n else "")
 
 def first_score(row) -> Union[float, None]:
@@ -99,7 +75,21 @@ with st.sidebar:
     if method == "mmr":
         mmr_lambda = st.slider("MMR λ (diversity)", 0.1, 0.9, 0.3)
     min_vote = st.number_input("Min vote_count", min_value=0, max_value=10000, value=0, step=1)
-    go = st.button("Search", use_container_width=True)
+    lang_policy_label = st.selectbox(
+        "Language handling",
+        ["Auto (soft boost)", "Auto (hard keep)", "Off"],
+        index=0,
+        help="Soft boost keeps diversity; Hard keep filters/top-ups strictly by language"
+    )
+    # Map to backend flags
+    if lang_policy_label.startswith("Auto (soft"):
+        lang_policy = "auto-soft"
+    elif lang_policy_label.startswith("Auto (hard"):
+        lang_policy = "auto-hard"
+    else:
+        lang_policy = "off"
+
+go = st.button("Search", use_container_width=True)
 
 if go:
     try:
@@ -107,13 +97,26 @@ if go:
         parts = [p.strip() for p in raw.split(",") if p.strip()]
         q: Union[str, Sequence[str]] = parts if len(parts) > 1 else (parts[0] if parts else "")
 
-        res = retrieve(q, k=k, method=method, mmr_lambda=mmr_lambda)
-        res = coerce_df(res)
+        try:
+            res_obj = retrieve(q, k=k, method=method, mmr_lambda=mmr_lambda, lang_policy=lang_policy)
+        except TypeError:
+            # Fallback for older signature
+            res_obj = retrieve(q, k=k, method=method, mmr_lambda=mmr_lambda)
+        res = coerce_df(res_obj)
         res = apply_min_votes(res, k=k, min_votes=min_vote)
 
         if not isinstance(res, pd.DataFrame) or res.empty:
             st.warning("No results. Try lowering Min vote_count, switching method, or broadening the query.")
             st.stop()
+
+        if HAS_EXPL:
+            try:
+                reasons_series = make_reasons_for_frame(q, res, max_reasons=2)
+                res = res.copy()
+                res["__reasons"] = reasons_series
+            except Exception:
+                # Fail silently
+                pass
 
         rows = res.to_dict(orient="records")
         cols = st.columns(5)
@@ -124,14 +127,14 @@ if go:
                 if isinstance(poster, str) and poster:
                     st.image(poster, use_container_width=True)
 
-                title = s(row.get("title"))
+                title = safe_str(row.get("title"))
                 y = row.get("year")
-                year_str = str(int(y)) if (isinstance(y, (int, float)) and pd.notna(y)) else s(y) or "—"
+                year_str = str(int(y)) if (isinstance(y, (int, float)) and pd.notna(y)) else safe_str(y) or "—"
                 st.markdown(f"**{title}**")
 
                 sc = first_score(row)
                 st.caption(f"{year_str} • score: {sc:.3f}" if sc is not None else year_str)
-
+                rlist = row.get("__reasons") if HAS_EXPL else None
                 casts = jlist(row.get("actors")) or jlist(row.get("actors_json"))
                 dirs  = jlist(row.get("directors")) or jlist(row.get("directors_json"))
                 reason_parts = []

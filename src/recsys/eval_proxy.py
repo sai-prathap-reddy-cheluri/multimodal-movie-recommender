@@ -4,7 +4,7 @@ import json
 import numpy as np
 import pandas as pd
 
-from src.config import MOVIES_PARQUET, ARTIFACTS_DIR, YEAR_NOW
+from src.config import MOVIES_PARQUET, ARTIFACTS_DIR
 from src.recsys.search_and_rerank import retrieve
 from search_and_rerank import jlist
 

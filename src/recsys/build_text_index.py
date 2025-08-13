@@ -1,5 +1,4 @@
 from pathlib import Path
-import json
 import numpy as np
 import pandas as pd
 import faiss
@@ -8,33 +7,11 @@ from src.config import (
     MOVIES_PARQUET, SEARCH_PAYLOAD, TEXT_INDEX, TEXT_IDMAP,
     EMBED_MODEL_NAME, DEVICE, USE_FP16
 )
+from src.utils.nlp_utils import jlist, safe_str
 try:
     import pycountry
 except Exception:
     pycountry = None
-
-
-def safe_str(x) -> str:
-    """Safe scalar → string: handles pd.NA / NaN / None."""
-    try:
-        return "" if pd.isna(x) else str(x)
-    except Exception:
-        return "" if x is None else str(x)
-
-def jlist(x):
-    """Robust JSON->list or pass-through list."""
-    if isinstance(x, list):
-        return x
-    if x is None:
-        return []
-    try:
-        if isinstance(x, str):
-            y = json.loads(x)
-        else:
-            y = x
-        return y if isinstance(y, list) else []
-    except Exception:
-        return []
 
 def lang_name_from_code(code: str) -> str:
     code = (code or "").strip().lower()
