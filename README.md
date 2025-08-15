@@ -224,7 +224,7 @@ Add `.github/workflows/ci.yml` with a tiny smoke test that:
 3) Builds the index
 4) Runs **one hybrid query** and uploads CSV results
 
-Badge (replace user/repo):
+Badge:
 ```markdown
 ![CI](https://github.com/sai-prathap-reddy-cheluri/multimodal-movie-recommender/actions/workflows/ci.yml/badge.svg)
 ```
