@@ -4,7 +4,9 @@ A fast, modern pipeline for a **next-gen movie recommender**.
 Start with a solid **data foundation**, ship a **dense retriever + light reranker** baseline, upgrade to **hybrid retrieval (dense + BM25) with language-aware ranking**, add **short explanations**, and finish with **personalization** from seed titles.
 
 > **Attribution:** This product uses the TMDb API but is not endorsed or certified by TMDb.
-
+---
+## 📺 Demo
+A Streamlit demo that lets you query the movie dataset, use seed titles for personalization, and see results ranked by a hybrid retrieval method.
 ![Demo – hybrid search + seeds](assets/demo.gif)
 
 ---
