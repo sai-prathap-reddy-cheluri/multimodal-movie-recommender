@@ -7,7 +7,7 @@ Start with a solid **data foundation**, ship a **dense retriever + light reranke
 ---
 ## 📺 Demo
 A Streamlit demo that lets you query the movie dataset, use seed titles for personalization, and see results ranked by a hybrid retrieval method.
-![Demo – hybrid search + seeds](assets/demo.gif)
+![Demo – hybrid search + seeds](assets/demo_new.gif)
 
 ---
 
