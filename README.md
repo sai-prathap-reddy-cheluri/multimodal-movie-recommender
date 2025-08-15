@@ -46,8 +46,8 @@ streamlit run src/app/demo.py
 - **Language-aware ranking:** detect language intent; **soft boost** or **hard keep**
 - **Explanations:** short reasons (language/genre/people/year) per result
 - **Personalization:** build a user vector from seed titles (“more like these”)
-- **Streamlit demo** (Windows 11 + CUDA friendly), **tiny offline eval**
-- **Light CI (optional):** build index on sample parquet and run one hybrid query
+- **Streamlit demo**
+- **Light CI:** build index on sample parquet and run one hybrid query
 
 ---
 
@@ -227,11 +227,6 @@ Add `.github/workflows/ci.yml` with a tiny smoke test that:
 2) Copies `movies_sample.parquet` → `movies.parquet`
 3) Builds the index
 4) Runs **one hybrid query** and uploads CSV results
-
-Badge:
-```markdown
-![CI](https://github.com/sai-prathap-reddy-cheluri/multimodal-movie-recommender/actions/workflows/ci.yml/badge.svg?branch=main)
-```
 
 ---
 
