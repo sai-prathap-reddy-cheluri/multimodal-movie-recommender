@@ -63,3 +63,14 @@ jobs:
         with:
           name: ci-results
           path: ci_results.csv
+
+      - name: Commit CI results to repo
+        if: github.ref == 'refs/heads/main'
+        run: |
+            git config user.name "github-actions[bot]"
+            git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+            mkdir -p reports/ci
+            cp ci_results.csv reports/ci/ci_results.csv
+            git add reports/ci/ci_results.csv
+            git commit -m "CI: update ci_results.csv [skip ci]" || echo "No changes"
+            git push

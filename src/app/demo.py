@@ -64,7 +64,7 @@ def coerce_df(obj) -> pd.DataFrame:
 # UI
 st.set_page_config(page_title="🎬 Next-Gen Movie Recommender", layout="wide")
 st.title("🎬 Baseline ‘Next-Gen’ Recommender")
-st.caption("Hybrid dense+sparse retrieval + light rerank (+optional MMR)")
+st.caption("Hybrid dense+sparse retrieval + light rerank")
 
 with st.sidebar:
     st.header("Search")

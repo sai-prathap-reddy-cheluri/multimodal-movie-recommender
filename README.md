@@ -5,6 +5,8 @@ Start with a solid **data foundation**, ship a **dense retriever + light reranke
 
 > **Attribution:** This product uses the TMDb API but is not endorsed or certified by TMDb.
 
+![Demo – hybrid search + seeds](assets/demo.gif)
+
 ---
 
 ## 🚀 Quickstart (TL;DR)
@@ -226,7 +228,7 @@ Add `.github/workflows/ci.yml` with a tiny smoke test that:
 
 Badge:
 ```markdown
-![CI](https://github.com/sai-prathap-reddy-cheluri/multimodal-movie-recommender/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/sai-prathap-reddy-cheluri/multimodal-movie-recommender/actions/workflows/ci.yml/badge.svg?branch=main)
 ```
 
 ---
