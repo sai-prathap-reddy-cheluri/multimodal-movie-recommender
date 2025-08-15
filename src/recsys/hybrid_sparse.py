@@ -24,7 +24,7 @@ class SparseBM25:
         self.bm25 = BM25Okapi(self.docs)
 
     def search(self, query: Union[str, Sequence[str]], topn: int = 500) -> pd.DataFrame:
-        # allow multi-query lists; concatenate tokens
+        """Search for query in the doc field, return topn results with scores."""
         if isinstance(query, (list, tuple)):
             tokens = []
             for q in query:

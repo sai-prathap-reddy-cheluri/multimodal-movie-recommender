@@ -10,6 +10,7 @@ from src.config import SEARCH_PAYLOAD
 from src.utils.nlp_utils import jlist, safe_str
 
 def norm_tokens(text: str) -> List[str]:
+    """Normalize text to a list of lowercase alphanumeric tokens."""
     return re.findall(r"[a-z0-9]+", (text or "").lower())
 
 DOC_PATTERNS = {
@@ -21,6 +22,7 @@ DOC_PATTERNS = {
 }
 
 def row_facets(row: pd.Series) -> dict:
+    """Extract facets from a DataFrame row representing a movie."""
     out = {
         "title": safe_str(row.get("title")),
         "year": None,
@@ -109,6 +111,7 @@ class ReasonContext:
 
 @lru_cache(maxsize=1)
 def load_payload() -> pd.DataFrame:
+    """Load the search payload DataFrame with relevant columns."""
     df = pd.read_parquet(SEARCH_PAYLOAD)
     keep = [c for c in df.columns if c in {
         "title","year","overview","doc","original_language","genres","genre_ids_json",
@@ -119,6 +122,7 @@ def load_payload() -> pd.DataFrame:
     return df[keep].copy()
 
 def build_reason_context() -> ReasonContext:
+    """Build a context for generating reasons based on the search payload."""
     df = load_payload()
     # Genre vocab
     vocab = set()
@@ -143,6 +147,7 @@ def build_reason_context() -> ReasonContext:
     return ReasonContext(genre_vocab=vocab, lang_aliases=aliases)
 
 def detect_query_facets(query_text: str, ctx: ReasonContext) -> dict:
+    """Detect facets from the query text, such as genres, language, year, etc."""
     tokens = norm_tokens(query_text)
     token_set = set(tokens)
     # Genres
@@ -179,12 +184,14 @@ def detect_query_facets(query_text: str, ctx: ReasonContext) -> dict:
 
 # Reasons
 def fmt_join(xs: Sequence[str], k: int) -> str:
+    """Format a list of strings into a comma-separated string, limiting to k unique items."""
     xs = [x for x in xs if x]
     if not xs: return ""
     xs = list(dict.fromkeys(xs))
     return ", ".join(xs[:k])
 
 def title_keyword_reason(query_text: str, title: str) -> Optional[str]:
+    """Check if the title contains a keyword from the query text."""
     qtoks = set(norm_tokens(query_text)) - {"movie","film","the","a","an","of","in"}
     ttoks = set(norm_tokens(title))
     hit = [t for t in qtoks if t in ttoks and len(t) >= 4]
@@ -193,6 +200,7 @@ def title_keyword_reason(query_text: str, title: str) -> Optional[str]:
     return None
 
 def genre_reason(q_genres: set, genres: List[str]) -> Optional[str]:
+    """Check if the query genres overlap with the item's genres."""
     if not q_genres or not genres: return None
     g = [g for g in genres if g and g.lower() in q_genres]
     if g:
@@ -200,6 +208,7 @@ def genre_reason(q_genres: set, genres: List[str]) -> Optional[str]:
     return None
 
 def lang_reason(lang_intent_name: Optional[str], row_lang_name: str, row_lang_code: str) -> Optional[str]:
+    """Check if the query language matches the item's language."""
     if not lang_intent_name: return None
     if row_lang_name and lang_intent_name.lower() == row_lang_name.lower():
         return f"Matches language: {row_lang_name}"
@@ -208,6 +217,7 @@ def lang_reason(lang_intent_name: Optional[str], row_lang_name: str, row_lang_co
     return None
 
 def year_reason(facets: dict, year: Optional[int]) -> Optional[str]:
+    """Check if the item's year aligns with the query facets."""
     if not year: return None
     if facets.get("years"):
         # if user named a year exactly and we're close
@@ -224,7 +234,9 @@ def year_reason(facets: dict, year: Optional[int]) -> Optional[str]:
         return f"Before {facets['before']}"
     return None
 
-def make_reasons_for_row(query: Union[str, Sequence[str]], row: pd.Series, ctx: Optional[ReasonContext] = None, max_reasons: int = 2) -> List[str]:
+def make_reasons_for_row(query: Union[str, Sequence[str]], row: pd.Series, ctx: Optional[ReasonContext] = None,
+                         max_reasons: int = 2) -> List[str]:
+    """Generate reasons for why a movie row matches the query."""
     text = " ".join(query) if isinstance(query, (list, tuple)) else str(query)
     ctx = ctx or build_reason_context()
     facets = detect_query_facets(text, ctx)
@@ -266,6 +278,7 @@ def make_reasons_for_row(query: Union[str, Sequence[str]], row: pd.Series, ctx: 
     return dedup
 
 def make_reasons_for_frame(query: Union[str, Sequence[str]], df: pd.DataFrame, max_reasons: int = 2) -> pd.Series:
+    """Generate reasons for each row in a DataFrame based on the query."""
     ctx = build_reason_context()
     if df is None or df.empty:
         return pd.Series([], dtype=object)

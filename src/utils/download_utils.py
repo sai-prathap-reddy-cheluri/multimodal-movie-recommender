@@ -9,6 +9,7 @@ import requests
 from src.config import TMDB_API_KEY, DATA_DIR
 
 def parse_date(s):
+    """Parse a date string or datetime object into a datetime object."""
     if isinstance(s, datetime):
         return s
     elif isinstance(s, str):
@@ -16,7 +17,7 @@ def parse_date(s):
     raise ValueError(f"Unrecognized date: {s}")
 
 def daterange(start_date, end_date, step_years=1):
-    # Yields tuples of (window_start, window_end) as string in YYYY-MM-DD
+    """Generates date windows from start_date to end_date with a step in years."""
     s = parse_date(start_date)
     e = parse_date(end_date)
     while s < e:
@@ -133,7 +134,6 @@ def download_movie_data(from_date: str,
     """
     Fetch movies for a date range, then asynchronously fetch full cast and directors.
     Returns the file path if data is written, otherwise None.
-    :param region:
     """
     print(f"\n=== Begin download: {from_date} to {to_date} ===")
     movies = recursive_fetch(

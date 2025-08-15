@@ -14,6 +14,7 @@ except Exception:
     pycountry = None
 
 def lang_name_from_code(code: str) -> str:
+    """Convert language code to full name using pycountry if available."""
     code = (code or "").strip().lower()
     if not code:
         return ""
@@ -27,7 +28,7 @@ def lang_name_from_code(code: str) -> str:
     return code.upper()
 
 def pick_lang_name(row):
-    # Prefer spoken_languages_json -> english_name
+    """Extract language name from row data."""
     sl = jlist(row.get("spoken_languages")) or jlist(row.get("spoken_languages_json"))
     if sl:
         if isinstance(sl[0], dict):
@@ -39,7 +40,7 @@ def pick_lang_name(row):
     return lang_name_from_code(safe_str(row.get("original_language")))
 
 def to_doc(row):
-    # Accept both pre-parsed and *_json columns
+    """Convert a row to a document string for embedding."""
     genres = jlist(row.get("genres")) or [str(g) for g in jlist(row.get("genre_ids_json", "[]"))]
     actors = jlist(row.get("actors")) or jlist(row.get("actors_json", "[]"))
     directors = jlist(row.get("directors")) or jlist(row.get("directors_json", "[]"))
@@ -66,6 +67,7 @@ def to_doc(row):
     return ". ".join([p for p in parts if p]).strip()
 
 def main():
+    """Build a text index for movie data."""
     assert isinstance(MOVIES_PARQUET, Path)
     assert MOVIES_PARQUET.exists(), f"Missing {MOVIES_PARQUET}"
 

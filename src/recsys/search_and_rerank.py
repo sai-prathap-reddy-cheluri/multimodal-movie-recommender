@@ -65,6 +65,7 @@ def build_lang_aliases(df: pd.DataFrame) -> dict[str, tuple[str,str]]:
     return aliases
 
 def detect_lang_intent(text: str, aliases: dict[str, tuple[str,str]]):
+    """Detect language intent from text using known aliases."""
     t = text.lower()
     # exact token contains (fast path)
     for k, (code, name) in aliases.items():
@@ -129,6 +130,7 @@ class SearchConfig:
     year_now: int = YEAR_NOW
 
 def coerce_cfg(cfg: Any) -> SearchConfig:
+    """Coerce any input to SearchConfig."""
     if isinstance(cfg, SearchConfig):
         return cfg
     if isinstance(cfg, dict):
@@ -141,6 +143,7 @@ def coerce_cfg(cfg: Any) -> SearchConfig:
     return SearchConfig()
 
 def qtext(q: Union[str, Sequence[str]]) -> str:
+    """Convert query to text: single string or multi-query list."""
     if isinstance(q, (list, tuple)):
         return ". ".join(map(str, q))  # multi-query: join
     return str(q)
@@ -159,14 +162,17 @@ class TextRetriever:
         self._sparse: Optional[SparseBM25] = None
 
     def ensure_ce(self):
+        """Ensure CrossEncoder is loaded; lazy load on first use."""
         if self._ce is None:
             self._ce = CrossEncoder(str(CROSS_ENCODER_NAME), device=DEVICE)
 
     def ensure_sparse(self):
+        """Ensure SparseBM25 is loaded; lazy load on first use."""
         if self._sparse is None:
             self._sparse = SparseBM25(self.payload)
 
     def encode_query(self,  query: Union[str, Sequence[str]]) -> np.ndarray:
+        """Encode a query into a dense vector."""
         vec = self.embedder.encode(
             qtext(query),
             convert_to_numpy=True,
@@ -177,6 +183,7 @@ class TextRetriever:
         return np.ascontiguousarray(vec, dtype=np.float32)
 
     def search(self,  query: Union[str, Sequence[str]], k: int = 20) -> pd.DataFrame:
+        """Search for a query and return top-k results as a DataFrame."""
         qv = self.encode_query(query)
         qv = np.ascontiguousarray(qv, dtype=np.float32)
         scores, idx = self.index.search(qv, k)
@@ -222,6 +229,7 @@ class TextRetriever:
             method: str = "blend",
             mmr_lambda: float = 0.3
     ) -> pd.DataFrame:
+        """Rerank results using the specified method."""
         method = (method or self.cfg.method or "blend").lower()
         year_now = getattr(self.cfg, "year_now", YEAR_NOW)
         out = res.copy()
@@ -278,12 +286,93 @@ class TextRetriever:
         fused["hybrid"] = 0.8 * fused["rrf"].astype(float) + 0.12 * recency + 0.08 * pop
         return fused.sort_values("hybrid", ascending=False).head(k)
 
+    def dense_from_user_vec(self, user_vec: np.ndarray, k: int = 20) -> pd.DataFrame:
+        """Retrieve top-k results based on a user vector (1, d) using dense search."""
+        qv = np.ascontiguousarray(user_vec, dtype=np.float32)
+        scores, idx = self.index.search(qv, k)
+        res = self.payload.iloc[idx[0]].copy()
+        res["score"] = scores[0]
+        res["rowid"] = idx[0].astype(np.int32)
+        return res
+
+    def hybrid_user_vec(
+            self,
+            user_vec: np.ndarray,
+            pseudo_query: Optional[str],
+            k: int = 20,
+            dense_k: int = 500,
+            sparse_k: int = 500,
+            rrf_k: int = 60,
+            w_dense: float = 1.0,
+            w_sparse: float = 1.0,
+    ) -> pd.DataFrame:
+        """Hybrid retrieval for user profile: dense(user_vec) + sparse(pseudo_query)."""
+        self.ensure_sparse()
+        dense = self.dense_from_user_vec(user_vec, k=dense_k).sort_values("score", ascending=False).reset_index(
+            drop=True)
+        if pseudo_query:
+            sparse = self._sparse.search(pseudo_query, topn=sparse_k).sort_values("bm25", ascending=False).reset_index(
+                drop=True)
+        else:
+            # empty sparse side → behave like dense-only
+            sparse = dense.head(0).copy()
+            sparse["bm25"] = []
+        fused = rrf_fuse(dense, sparse, rrf_k=rrf_k, w_dense=w_dense, w_sparse=w_sparse, topn=max(dense_k, sparse_k))
+        year_now = getattr(self.cfg, "year_now", YEAR_NOW)
+        y = pd.to_numeric(fused.get("year"), errors="coerce").fillna(year_now)
+        recency = 1.0 / (1.0 + np.maximum(0, year_now - y))
+        pop = (pd.to_numeric(fused.get("vote_count"), errors="coerce").fillna(0)).clip(0, 20000) / 20000.0
+        fused["hybrid"] = 0.8 * fused["rrf"].astype(float) + 0.12 * recency + 0.08 * pop
+        return fused.sort_values("hybrid", ascending=False).head(k)
+
 
 @lru_cache(maxsize=2)
 def get_retriever(cfg_tuple: Tuple) -> TextRetriever:
     """LRU-cached retriever keyed by a tuple of config values (so we don't reload models repeatedly)."""
     cfg = coerce_cfg(cfg_tuple)
     return TextRetriever(cfg)
+
+def retrieve_user_profile(
+    user_vec: np.ndarray,
+    pseudo_query: Optional[str] = None,
+    k: int = 20,
+    method: str = "hybrid",
+    mmr_lambda: float = 0.3,
+    hybrid_dense_k: int = 500,
+    hybrid_sparse_k: int = 500,
+    rrf_k: int = 60,
+    w_dense: float = 1.0,
+    w_sparse: float = 1.0,
+) -> pd.DataFrame:
+    """
+    Personalized retrieval: user_vec from seeds (1,d) + optional pseudo_query string.
+    - method='hybrid': fuse dense(user_vec) with BM25(pseudo_query)
+    - else: dense(user_vec) then light rerank; CE uses pseudo_query if present
+    """
+    cfg = SearchConfig(k=k, method=method, mmr_lambda=mmr_lambda)
+    tr = get_retriever(tuple(asdict(cfg).values()))
+
+    if method == "hybrid":
+        return tr.hybrid_user_vec(
+            user_vec,
+            pseudo_query=pseudo_query,
+            k=k,
+            dense_k=hybrid_dense_k,
+            sparse_k=hybrid_sparse_k,
+            rrf_k=rrf_k,
+            w_dense=w_dense,
+            w_sparse=w_sparse,
+        )
+
+    # non-hybrid: dense first, then rerank (CE needs text, so pass pseudo_query if available)
+    base_k = max(k, 200 if method == "mmr" else k)
+    res = tr.dense_from_user_vec(user_vec, k=base_k)
+    # If CE but no text, downgrade to 'blend'
+    mm = method
+    if method in ("ce", "cross", "cross_encoder") and not pseudo_query:
+        mm = "blend"
+    out = tr.rerank(pseudo_query or "", res, method=mm, mmr_lambda=mmr_lambda)
+    return out.head(k)
 
 def retrieve(
         query: Union[str, Sequence[str]],
@@ -297,6 +386,7 @@ def retrieve(
         w_sparse: float = 1.0,
         lang_policy: str = "auto-soft"
 ) -> pd.DataFrame:
+    """Retrieve top-k results for a query using the specified method."""
     cfg = SearchConfig(k=k, method=method, mmr_lambda=mmr_lambda)
     tr = get_retriever(tuple(asdict(cfg).values()))
     # detect language intent from query using data-driven aliases
@@ -346,6 +436,12 @@ def cli():
         w_dense=args.w_dense,
         w_sparse=args.w_sparse,
     )
+    try:
+        from src.recsys.explanations import make_reasons_for_frame
+        out = out.copy()
+        out["reasons"] = make_reasons_for_frame(args.query, out, max_reasons=2)
+    except Exception:
+        pass
     cols = [c for c in ["title", "year", "score", "bm25", "rrf", "hybrid", "blend", "rerank", "poster_url"] if
             c in out.columns]
     print(out[cols].head(args.k).to_string(index=False))

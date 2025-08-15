@@ -9,6 +9,7 @@ load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__),'..', '.env'))
 TMDB_API_KEY = os.getenv('TMDB_API_KEY')
 
 def fetch_popular_movies():
+    """Fetch the top 5 popular movies from TMDB."""
     url = f'https://api.themoviedb.org/3/movie/popular'
     params = {
         'api_key': TMDB_API_KEY,

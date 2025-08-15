@@ -8,6 +8,7 @@ IMAGE_BASE = "https://image.tmdb.org/t/p/w500"
 SAMPLE_ROWS_DEFAULT = 10000
 
 def strip_all_strings(df: pd.DataFrame) -> pd.DataFrame:
+    """Strips whitespace from all string columns in a DataFrame."""
     for c in df.columns:
         if pd.api.types.is_string_dtype(df[c]):
             df[c] = df[c].str.strip()
@@ -15,6 +16,7 @@ def strip_all_strings(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 def to_bool(x):
+    """Convert various truthy/falsy strings to boolean, or return pd.NA."""
     if pd.isna(x): return pd.NA
     s =str(x).strip().lower()
     if s in {"1","true","t","yes","y"}: return True
@@ -22,7 +24,7 @@ def to_bool(x):
     return pd.NA
 
 def parse_date_iso(x):
-    # Accepts 'YYYY-MM-DD' and gracefully NA otherwise
+    """Parse a date string to ISO format 'YYYY-MM-DD'."""
     if pd.isna(x): return pd.NA
     s = str(x).strip()
     if not s: return pd.NA
@@ -75,6 +77,7 @@ def parse_list_cell(x, as_int = False) -> str:
         return json.dumps([s])
 
 def profile(df: pd.DataFrame) -> dict:
+    """Generate a simple profile of the DataFrame."""
     return {
         "rows": int(len(df)),
         "cols": int(df.shape[1]),
@@ -93,6 +96,7 @@ def profile(df: pd.DataFrame) -> dict:
     }
 
 def sha256(path: p.Path) -> str:
+    """Calculate SHA-256 checksum of a file."""
     h = hashlib.sha256()
     with open(path, "rb") as f:
         for chunk in iter(lambda: f.read(1<<20), b""):
@@ -100,6 +104,7 @@ def sha256(path: p.Path) -> str:
     return h.hexdigest()
 
 def abs_url(path_val: str | None) -> str | None:
+    """Convert a relative path to an absolute URL for images."""
     if path_val is None or (isinstance(path_val, float) and pd.isna(path_val)):
         return None
     s = str(path_val).strip()
@@ -171,6 +176,7 @@ def _ensure_json_string_series(s: pd.Series, as_int=False) -> pd.Series:
     return s.map(_conv).astype("string")
 
 def run(src_csv: str, out_dir: str, sample_rows: int):
+    """Process a raw CSV of movies into a DS-ready Parquet release."""
     out = p.Path(out_dir)
     out.mkdir(parents=True, exist_ok=True)
     reports = p.Path("reports")

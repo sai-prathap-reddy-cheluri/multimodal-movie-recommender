@@ -9,6 +9,7 @@ from src.recsys.search_and_rerank import retrieve
 from search_and_rerank import jlist
 
 def genre_jaccard(a, b):
+    """Jaccard similarity for genre lists, robust to JSON or list inputs."""
     a, b = set(jlist(a)), set(jlist(b))
     if not a and not b:
         return 1.0
@@ -17,7 +18,7 @@ def genre_jaccard(a, b):
     return len(a & b) / len(a | b)
 
 def eval_one(seed_row: pd.Series, k: int = 10, method: str = "blend"):
-    # Query is title (robust), you can try overview/doc later
+    """Evaluate a single movie row against the retrieval method."""
     q = seed_row.get("title") or seed_row.get("doc") or ""
     res = retrieve(q, k=k+1, method=method)  # ask for one extra to drop self
     # drop exact self if present
@@ -47,6 +48,7 @@ def eval_one(seed_row: pd.Series, k: int = 10, method: str = "blend"):
     }
 
 def run_eval(k: int = 10, sample_n: int = 200, method: str = "blend", seed: int = 42) -> pd.DataFrame:
+    """Run evaluation on a sample of movies."""
     df = pd.read_parquet(MOVIES_PARQUET)
     if len(df) == 0:
         raise RuntimeError("Empty movies parquet.")

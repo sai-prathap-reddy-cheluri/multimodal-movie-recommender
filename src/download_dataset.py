@@ -99,6 +99,7 @@ def run_downloader(from_date, to_date, include_adult, concurrency):
 
 
 def handle_time_preset(preset):
+    """Handle changes in the time preset dropdown."""
     if preset == "Custom":
         # Show calendar pickers for custom
         return gr.update(visible=True, value=None), gr.update(visible=True, value=None)
@@ -107,7 +108,7 @@ def handle_time_preset(preset):
         return gr.update(visible=False, value=fd), gr.update(visible=False, value=td)
 
 def autofill_to_date(from_date_val, to_date_val):
-    # If To Date is empty and From Date is set, set To Date to today's date
+    """Autofill To Date based on From Date if To Date is empty."""
     if to_date_val is None and from_date_val is not None:
         # Today's date as datetime with 23:59:59 (end of day)
         today = datetime.now().replace(hour=23, minute=59, second=59, microsecond=0)

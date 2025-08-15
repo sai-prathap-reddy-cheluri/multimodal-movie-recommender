@@ -4,10 +4,10 @@ ROOT = Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from typing import  Sequence, Union
+from typing import Sequence, Union, Optional
 import pandas as pd
 import streamlit as st
-from src.recsys.search_and_rerank import retrieve
+from src.recsys.search_and_rerank import retrieve, retrieve_user_profile
 from src.utils.nlp_utils import jlist, safe_str
 
 try:
@@ -69,6 +69,8 @@ st.caption("Hybrid dense+sparse retrieval + light rerank (+optional MMR)")
 with st.sidebar:
     st.header("Search")
     raw = st.text_input("Taste / title / query (comma → multi)", "indian thriller")
+    seeds_raw = st.text_input("Seed titles (comma → multi)", "Drishyam, Memories")
+    mode = st.radio("Query mode", ["Query only", "Seeds only", "Both"], index=0)
     method = st.selectbox("Method", ["hybrid", "blend", "retrieval", "ce", "mmr"], index=0)
     k = st.slider("Top-K", 5, 40, 20)
     mmr_lambda = 0.3
@@ -96,31 +98,69 @@ if go:
         # allow multi-queries
         parts = [p.strip() for p in raw.split(",") if p.strip()]
         q: Union[str, Sequence[str]] = parts if len(parts) > 1 else (parts[0] if parts else "")
+        seed_titles = [t.strip() for t in seeds_raw.split(",") if t.strip()] if seeds_raw else []
+        res = None
+        pseudo_for_expl: Optional[str] = None
 
-        try:
-            res_obj = retrieve(q, k=k, method=method, mmr_lambda=mmr_lambda, lang_policy=lang_policy)
-        except TypeError:
-            # Fallback for older signature
-            res_obj = retrieve(q, k=k, method=method, mmr_lambda=mmr_lambda)
-        res = coerce_df(res_obj)
+        if mode == "Query only" or not seed_titles:
+            # regular retrieve
+            try:
+                res_obj = retrieve(q, k=k, method=method, mmr_lambda=mmr_lambda, lang_policy=lang_policy)
+            except TypeError:
+                res_obj = retrieve(q, k=k, method=method, mmr_lambda=mmr_lambda)
+            res = coerce_df(res_obj)
+            pseudo_for_expl = q if isinstance(q, str) else ", ".join(q)
+
+        elif mode == "Seeds only":
+            # build user profile from seeds and use personalized retrieval
+            from src.recsys.user_profiles import prepare_user_profile_from_titles  # [STEP6]
+
+            user_vec, pseudo_query, _rows = prepare_user_profile_from_titles(seed_titles)
+            res = retrieve_user_profile(
+                user_vec,
+                pseudo_query=pseudo_query,
+                k=k,
+                method=method,
+                mmr_lambda=mmr_lambda,
+            )
+            pseudo_for_expl = pseudo_query
+
+        else:  # Both
+            # combine: use seeds to steer, include text query in pseudo
+            from src.recsys.user_profiles import prepare_user_profile_from_titles  # [STEP6]
+
+            user_vec, pseudo_query, _rows = prepare_user_profile_from_titles(seed_titles)
+            combo = pseudo_query
+            if isinstance(q, str) and q:
+                combo = f"{pseudo_query}. Query: {q}"
+            elif isinstance(q, (list, tuple)) and q:
+                combo = f"{pseudo_query}. Query: {'; '.join(q)}"
+            res = retrieve_user_profile(
+                user_vec,
+                pseudo_query=combo,
+                k=k,
+                method=method,
+                mmr_lambda=mmr_lambda,
+            )
+            pseudo_for_expl = combo
+
         res = apply_min_votes(res, k=k, min_votes=min_vote)
 
         if not isinstance(res, pd.DataFrame) or res.empty:
-            st.warning("No results. Try lowering Min vote_count, switching method, or broadening the query.")
+            st.warning("No results. Try lowering Min vote_count, switching method, or broadening the query/seeds.")
             st.stop()
 
-        if HAS_EXPL:
+        # explanations (use pseudo/text used in retrieval)
+        if HAS_EXPL and pseudo_for_expl:
             try:
-                reasons_series = make_reasons_for_frame(q, res, max_reasons=2)
+                reasons_series = make_reasons_for_frame(pseudo_for_expl, res, max_reasons=2)
                 res = res.copy()
                 res["__reasons"] = reasons_series
             except Exception:
-                # Fail silently
                 pass
 
         rows = res.to_dict(orient="records")
         cols = st.columns(5)
-
         for i, row in enumerate(rows):
             with cols[i % 5]:
                 poster = row.get("poster_url")
@@ -129,22 +169,17 @@ if go:
 
                 title = safe_str(row.get("title"))
                 y = row.get("year")
-                year_str = str(int(y)) if (isinstance(y, (int, float)) and pd.notna(y)) else safe_str(y) or "—"
+                year_str = str(int(y)) if (isinstance(y, (int, float)) and pd.notna(y)) else (safe_str(y) or "—")
                 st.markdown(f"**{title}**")
 
                 sc = first_score(row)
                 st.caption(f"{year_str} • score: {sc:.3f}" if sc is not None else year_str)
-                rlist = row.get("__reasons") if HAS_EXPL else None
-                casts = jlist(row.get("actors")) or jlist(row.get("actors_json"))
-                dirs  = jlist(row.get("directors")) or jlist(row.get("directors_json"))
-                reason_parts = []
-                if casts:
-                    reason_parts.append("Cast: " + ", ".join(map(str, casts[:2])))
-                if dirs:
-                    reason_parts.append("Dir: " + ", ".join(map(str, dirs[:1])))
-                if not reason_parts:
-                    reason_parts.append(truncate(row.get("overview"), 120))
-                st.write(" • ".join([p for p in reason_parts if p]))
+
+                rlist = row.get("__reasons")
+                if isinstance(rlist, list) and rlist:
+                    st.write(" • ".join(rlist))
+                else:
+                    st.write(truncate(row.get("overview"), 120))
 
                 if i >= k - 1:
                     break
@@ -152,11 +187,6 @@ if go:
     except Exception as e:
         st.error(f"Error while searching: {e}")
         st.exception(e)
-        try:
-            st.write("Debug peek:", type(res).__name__)
-            if isinstance(res, pd.DataFrame):
-                st.write(res.head(3).to_dict(orient="records"))
-        except Exception:
-            pass
-else:
-    st.info("Enter a query, choose a method, and click **Search**. Try `Method = hybrid` for best exact-name/franchise hits.")
+    else:
+        st.info(
+            "Type a query and/or seed a few titles (e.g., **Drishyam, Memories**), pick a method (try **hybrid**) and hit Search.")

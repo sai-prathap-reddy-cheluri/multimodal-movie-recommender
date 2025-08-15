@@ -15,10 +15,12 @@ except ImportError:
 
 
 def _is_empty(s: pd.Series) -> pd.Series:
+    """Check if a Series is empty or contains only whitespace."""
     return s.isna() | (s.astype(str).str.strip() == "")
 
 
 def _mask_both_empty(df: pd.DataFrame) -> pd.Series:
+    """Mask rows where both actors and directors are empty."""
     actors_empty = _is_empty(df["actors"])
     directors_empty = _is_empty(df["directors"])
     return actors_empty & directors_empty
@@ -58,6 +60,7 @@ async def fetch_with_retry(session, movie_id, retries=8, base_backoff=1.0) -> Di
 
 
 async def process_batch(session, ids):
+    """Process a batch of movie IDs and fetch their details."""
     results = {}
     tasks = [fetch_with_retry(session, mid) for mid in ids]
     details = await asyncio.gather(*tasks)
@@ -67,11 +70,13 @@ async def process_batch(session, ids):
 
 
 def save_progress(df, csv_path):
+    """Save the current progress to CSV."""
     df.to_csv(csv_path, index=False)
     print(f"Progress saved to {csv_path}")
 
 
 async def backfill(csv_path, concurrency=10, batch_size=500):
+    """Backfill missing actors and directors in the CSV file."""
     df = pd.read_csv(csv_path)
 
     if "actors" not in df.columns or "directors" not in df.columns:
